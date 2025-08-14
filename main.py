@@ -184,6 +184,7 @@ class Orchestrator:
     def run(self) -> None:
         np.random.seed(0)
         params = Parameters()
+        ConfigETx(params)
         tx_dsp = TxDSP()
         channel = Channel()
         ConfigERx(params)
