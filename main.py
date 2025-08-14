@@ -190,8 +190,9 @@ class Orchestrator:
         BER_results: list[float] = []
 
         for snr_db in SNR_dB:
-            bit_count = 4000
-            bits = np.random.randint(0, 2, bit_count, dtype=int)
+            # User Nbits from params
+            Nbits = params.get_param("Nbits")
+            bits = np.random.randint(0, 2, Nbits, dtype=int)
 
             params.set_param("SNR", float(snr_db))
             tx_dsp.generate_signal(bits)
