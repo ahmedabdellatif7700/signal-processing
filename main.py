@@ -84,12 +84,12 @@ class ConfigETx:
 # Transmitter DSP (QPSK only)
 # ----------------------------
 class TxDSP:
-    def __init__(self, params: Parameters):
-        self.params = params
+    def __init__(self):
+        pass  # 'a' already in Parameters
 
-    def generate_signal(self, bits: np.ndarray) -> None:
-        k: int = self.params.k
-        a: float = self.params.a
+    def generate_signal(self, params: Parameters, bits: np.ndarray) -> np.ndarray:
+        k: int = params.k
+        a: float = params.a
 
         if bits.size % k != 0:
             pass
@@ -101,22 +101,27 @@ class TxDSP:
             (1, 1): -1 - 1j,
             (1, 0): 1 - 1j
         }
-        symbols: np.ndarray = a * np.array([mapping[tuple(b)] for b in B], dtype=np.complex64)
+        self._symbols: np.ndarray = a * np.array([mapping[tuple(b)] for b in B], dtype=np.complex64)
 
         # Save to Parameters
-        self.params.t_k = symbols
+        params.set_param("t_k", self._symbols)
 
+        # Return symbols
+        return self._symbols
 
 class Channel:
     """Simple AWGN channel"""
-    def add_noise(self, params: Parameters) -> None:
-        rx_signal = params.t_k
+    def add_noise(self, params: Parameters, rx_symbols:np.ndarray) -> np.ndarray:
+     
         snr_linear = 10 ** (params.SNR / 10)
-        power = np.mean(np.abs(rx_signal)**2)
+        power = np.mean(np.abs(rx_symbols)**2)
         noise_std = np.sqrt(power / (2 * snr_linear))
-        noise = noise_std * (np.random.randn(*rx_signal.shape) + 1j*np.random.randn(*rx_signal.shape))
-        params.r_k = rx_signal + noise
+        noise = noise_std * (np.random.randn(*rx_symbols.shape) + 1j*np.random.randn(*rx_symbols.shape))
         
+        self._r_k = rx_symbols + noise
+        # Store in parameters
+        params.r_k = rx_symbols + noise
+        return self._r_k
 # ----------------------------
 # Receiver configuration
 # ----------------------------
@@ -179,7 +184,7 @@ class Orchestrator:
     def run(self) -> None:
         np.random.seed(0)
         params = Parameters()
-        tx_dsp = TxDSP(params)
+        tx_dsp = TxDSP()
         channel = Channel()
         ConfigERx(params)
         rx_dsp = RxDSP()
@@ -194,9 +199,10 @@ class Orchestrator:
             Nbits = params.get_param("Nbits")
             bits = np.random.randint(0, 2, Nbits, dtype=int)
 
+            t_k = tx_dsp.generate_signal(params,bits)
             params.set_param("SNR", float(snr_db))
-            tx_dsp.generate_signal(bits)
-            channel.add_noise(params)
+
+            _ = channel.add_noise(params,t_k)
             # Boundaries already set in ConfigERx __init__
             rx_dsp.process_signal(params, bits)
 
