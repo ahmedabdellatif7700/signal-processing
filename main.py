@@ -45,16 +45,41 @@ class Parameters:
         ch5 = np.array([0.304, 0.903, 0.304], dtype=float)
         ch6 = np.array([0.341, 0.876, 0.341], dtype=float)
 
-        channel_choice: int = 1
-        self.h: np.ndarray = {1: ch1, 2: ch2, 3: ch3, 4: ch4, 5: ch5, 6: ch6}[channel_choice]
-
-        print(f"Selected Channel CH{channel_choice} impulse response h: {self.h}")
+        # ----------------------------
+        # NEW: Store all channels and select default
+        # ----------------------------
+        self.channels = {1: ch1, 2: ch2, 3: ch3, 4: ch4, 5: ch5, 6: ch6}
+        self.set_channel(2)
 
     def set_param(self, name: str, value: Any) -> None:
         setattr(self, name, value)
 
     def get_param(self, name: str) -> Any:
         return getattr(self, name)
+
+    # ----------------------------
+    # NEW: Channel selection helper
+    # ----------------------------
+    def set_channel(self, channel_id: int = 2) -> None:
+        self.h = self.channels[channel_id]
+        print(f"Selected Channel CH{channel_id} impulse response h: {self.h}")
+
+    # ----------------------------
+    # NEW: Nonlinear distortion helper
+    # ----------------------------
+    def nonlinear_distortion(self, a_k: np.ndarray, NL: int = 0) -> np.ndarray:
+        """Apply nonlinear distortion to transmitted symbols"""
+        if NL == 0:
+            return a_k
+        elif NL == 1:
+            return np.tanh(a_k)
+        elif NL == 2:
+            return a_k + 0.2 * (a_k ** 2) - 0.1 * (a_k ** 3)
+        elif NL == 3:
+            return a_k + 0.2 * (a_k ** 2) - 0.1 * (a_k ** 3) + 0.5 * np.cos(np.pi * a_k)
+        else:
+            return a_k  # default no distortion
+
 
 # ----------------------------
 # Transmitter configuration
@@ -79,6 +104,7 @@ class ConfigETx:
             self.params.Nsym = self.params.Nbits // self.params.k
         else:
             pass
+
 
 # ----------------------------
 # Transmitter DSP (QPSK only)
@@ -109,19 +135,21 @@ class TxDSP:
         # Return symbols
         return self._symbols
 
+
 class Channel:
     """Simple AWGN channel"""
-    def add_noise(self, params: Parameters, rx_symbols:np.ndarray) -> np.ndarray:
-     
+    def add_noise(self, params: Parameters, rx_symbols: np.ndarray) -> np.ndarray:
         snr_linear = 10 ** (params.SNR / 10)
         power = np.mean(np.abs(rx_symbols)**2)
         noise_std = np.sqrt(power / (2 * snr_linear))
-        noise = noise_std * (np.random.randn(*rx_symbols.shape) + 1j*np.random.randn(*rx_symbols.shape))
-        
+        noise = noise_std * (np.random.randn(*rx_symbols.shape) + 1j * np.random.randn(*rx_symbols.shape))
+
         self._r_k = rx_symbols + noise
         # Store in parameters
         params.r_k = rx_symbols + noise
         return self._r_k
+
+
 # ----------------------------
 # Receiver configuration
 # ----------------------------
@@ -180,6 +208,9 @@ class RxDSP:
         params.set_param("BER", ber)
 
 
+# ----------------------------
+# Orchestrator with Nonlinear Sweep
+# ----------------------------
 class Orchestrator:
     def run(self) -> None:
         np.random.seed(0)
@@ -190,42 +221,62 @@ class Orchestrator:
         ConfigERx(params)
         rx_dsp = RxDSP()
 
-        bits_per_symbol = params.k
-        Eb_No_dB = np.arange(-6, 11, 1, dtype=float)
-        SNR_dB = Eb_No_dB + 10 * np.log10(bits_per_symbol)
-        BER_results: list[float] = []
+        # Desired SNR_dB from 10 to 18 dB
+        SNR_dB = np.arange(10, 15, 0.5, dtype=float)
+
+        # Convert to Eb/No for theoretical BER
+        Eb_No_dB = SNR_dB - 10 * np.log10(2)  # bits_per_symbol = 2 for QPSK
+
+        # Theoretical BER
+        theory_ber = 0.5 * erfc(np.sqrt(10 ** (Eb_No_dB / 10)))
+        # ----------------------------
+        # NEW: Sweep nonlinear distortions
+        # ----------------------------
+        NL_types = [0, 1, 2, 3]  # distortion cases
+        BER_results_dict = {nl: [] for nl in NL_types}
 
         for snr_db in SNR_dB:
             # User Nbits from params
             Nbits = params.get_param("Nbits")
             bits = np.random.randint(0, 2, Nbits, dtype=int)
 
-            t_k = tx_dsp.generate_signal(params,bits)
+            t_k = tx_dsp.generate_signal(params, bits)
             params.set_param("SNR", float(snr_db))
 
-            _ = channel.add_noise(params,t_k)
-            # Boundaries already set in ConfigERx __init__
-            rx_dsp.process_signal(params, bits)
+            for NL in NL_types:
+                # Apply nonlinear distortion
+                t_k_nl = params.nonlinear_distortion(t_k, NL)
 
-            ber_val: float = float(params.get_param("BER"))
-            BER_results.append(ber_val)
-            print(f"QPSK SNR = {snr_db:.1f} dB, BER = {ber_val:.6e}")
+                # Channel + AWGN
+                _ = channel.add_noise(params, t_k_nl)
 
-        # Plot
+                # Receiver DSP
+                rx_dsp.process_signal(params, bits)
+
+                # Store BER
+                ber_val = float(params.get_param("BER"))
+                BER_results_dict[NL].append(ber_val)
+                print(f"SNR={snr_db:.1f} dB, NL={NL}, BER={ber_val:.6e}")
+
+        # ----------------------------
+        # Plot results
+        # ----------------------------
         plt.figure()
-        plt.semilogy(SNR_dB, BER_results, 'or', label='Simulated')
+        for NL in NL_types:
+            plt.semilogy(SNR_dB, BER_results_dict[NL], marker='o', label=f'NL={NL}')
+
+        # Add theoretical BER for QPSK (no distortion)
+        theory_ber = 0.5 * erfc(np.sqrt(10 ** (Eb_No_dB / 10)))
+        plt.semilogy(SNR_dB, theory_ber, 'k--', label='Theoretical')
+
         plt.grid(True)
         plt.xlabel('SNR dB (Es/N0)')
         plt.ylabel('Bit Error Rate (BER)')
-        plt.title('BER vs SNR for QPSK in AWGN')
-
-        # Theoretical BER
-        theory_ber = 0.5 * erfc(np.sqrt(10 ** (Eb_No_dB / 10)))
-        plt.semilogy(SNR_dB, theory_ber, label='Theoretical')
-
+        plt.title(f'BER vs SNR for QPSK with Nonlinear Distortions\nSelected Channel: CH{params.h.tolist()}')
         plt.legend()
         plt.tight_layout()
         plt.show()
+
 
 # ----------------------------
 # Run simulations (QPSK only)
