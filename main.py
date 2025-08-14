@@ -9,10 +9,10 @@ from typing import Any
 # ----------------------------
 class Parameters:
     def __init__(self):
-        self.SNR: float = 0.0                                   # dB, Es/N0
+        self.SNR: float = 0.0  # dB, Es/N0
         self.TxSignal: np.ndarray = np.empty(0, dtype=np.complex128)
         self.RxSignal: np.ndarray = np.empty(0, dtype=np.complex128)
-        self.BER: float = 0.0                                   # Bit Error Rate
+        self.BER: float = 0.0  # Bit Error Rate
 
     def set_param(self, name: str, value: Any) -> None:
         setattr(self, name, value)
@@ -35,37 +35,26 @@ class ConfigETx:
 
 
 # ----------------------------
-# Transmitter DSP
+# Transmitter DSP (QPSK only)
 # ----------------------------
 class TxDSP:
-    def __init__(self, modulation: str = "16QAM"):
-        self.modulation: str = modulation.upper()
-        if self.modulation == "16QAM":
-            self.M: int = 16
-            self.k: int = 4
-            self.a: float = 1 / np.sqrt(10)
-        elif self.modulation == "QPSK":
-            self.M: int = 4
-            self.k: int = 2
-            self.a: float = 1 / np.sqrt(2)
-        else:
-            raise ValueError("Unsupported modulation")
+    def __init__(self):
+        self.M: int = 4
+        self.k: int = int(np.log2(self.M))  # bits per symbol
+        self.a: float = 1 / np.sqrt(2)
 
     def generate_signal(self, params: Parameters, bits: np.ndarray) -> None:
         if bits.size % self.k != 0:
             raise ValueError(f"Number of bits must be multiple of {self.k}")
 
-        if self.modulation == "16QAM":
-            B = bits.reshape(-1, 4)
-            mapping = {(0, 0): -3, (0, 1): -1, (1, 1): 1, (1, 0): 3}
-            I = np.array([mapping[tuple(b[:2])] for b in B], dtype=float)
-            Q = np.array([mapping[tuple(b[2:])] for b in B], dtype=float)
-            symbols = self.a * (I + 1j * Q)
-        else:  # QPSK
-            B = bits.reshape(-1, 2)
-            mapping = {(0, 0): 1 + 1j, (0, 1): -1 + 1j, (1, 1): -1 - 1j, (1, 0): 1 - 1j}
-            symbols = self.a * np.array([mapping[tuple(b)] for b in B], dtype=np.complex128)
-
+        B = bits.reshape(-1, self.k)
+        mapping = {
+            (0, 0): 1 + 1j,
+            (0, 1): -1 + 1j,
+            (1, 1): -1 - 1j,
+            (1, 0): 1 - 1j
+        }
+        symbols = self.a * np.array([mapping[tuple(b)] for b in B], dtype=np.complex128)
         params.set_param("TxSignal", symbols)
 
 
@@ -80,7 +69,9 @@ class Channel:
         snr_linear: float = 10 ** (snr_db / 10)
         Es: float = float(np.mean(np.abs(tx) ** 2))
         N0: float = Es / snr_linear
-        noise: np.ndarray = np.sqrt(N0 / 2) * (np.random.randn(tx.size) + 1j * np.random.randn(tx.size))
+        noise: np.ndarray = np.sqrt(N0 / 2) * (
+            np.random.randn(tx.size) + 1j * np.random.randn(tx.size)
+        )
         rx: np.ndarray = tx + noise
         params.set_param("RxSignal", rx)
 
@@ -95,50 +86,28 @@ class ConfigERx:
 
 
 # ----------------------------
-# Receiver DSP
+# Receiver DSP (QPSK only)
 # ----------------------------
 class RxDSP:
-    def __init__(self, modulation: str = "16QAM"):
-        self.modulation: str = modulation.upper()
-        if self.modulation == "16QAM":
-            self.a: float = 1 / np.sqrt(10)
-        elif self.modulation == "QPSK":
-            self.a: float = 1 / np.sqrt(2)
-        else:
-            raise ValueError("Unsupported modulation")
+    def __init__(self):
+        self.a: float = 1 / np.sqrt(2)
 
     def process_signal(self, params: Parameters, original_bits: np.ndarray) -> None:
         rx: np.ndarray = params.get_param("RxSignal")
         decoded_bits_list: list[int] = []
 
-        if self.modulation == "16QAM":
-            def decision(val: float) -> tuple[int, int]:
-                if val < -2.0 * self.a:
-                    return (0, 0)
-                elif val < 0.0:
-                    return (0, 1)
-                elif val < 2.0 * self.a:
-                    return (1, 1)
-                else:
-                    return (1, 0)
+        def decision_qpsk(sym: complex) -> tuple[int, int]:
+            if sym.real > 0 and sym.imag > 0:
+                return (0, 0)
+            elif sym.real < 0 and sym.imag > 0:
+                return (0, 1)
+            elif sym.real < 0 and sym.imag < 0:
+                return (1, 1)
+            else:
+                return (1, 0)
 
-            for sym in rx:
-                i_bits = decision(sym.real)
-                q_bits = decision(sym.imag)
-                decoded_bits_list.extend(i_bits + q_bits)
-        else:  # QPSK
-            def decision_qpsk(sym: complex) -> tuple[int, int]:
-                if sym.real > 0 and sym.imag > 0:
-                    return (0, 0)
-                elif sym.real < 0 and sym.imag > 0:
-                    return (0, 1)
-                elif sym.real < 0 and sym.imag < 0:
-                    return (1, 1)
-                else:
-                    return (1, 0)
-
-            for sym in rx:
-                decoded_bits_list.extend(decision_qpsk(sym))
+        for sym in rx:
+            decoded_bits_list.extend(decision_qpsk(sym))
 
         decoded_bits = np.array(decoded_bits_list, dtype=int)
         ber: float = float(np.sum(decoded_bits != original_bits) / original_bits.size)
@@ -149,21 +118,16 @@ class RxDSP:
 # Orchestrator
 # ----------------------------
 class Orchestrator:
-    def run(self, modulation: str = "16QAM") -> None:
+    def run(self) -> None:
         np.random.seed(0)
-        modulation = modulation.upper()
         params = Parameters()
         config_tx = ConfigETx()
-        tx_dsp = TxDSP(modulation)
+        tx_dsp = TxDSP()
         channel = Channel()
         config_rx = ConfigERx()
-        rx_dsp = RxDSP(modulation)
+        rx_dsp = RxDSP()
 
-        if modulation == "16QAM":
-            bits_per_symbol = 4
-        else:  # QPSK
-            bits_per_symbol = 2
-
+        bits_per_symbol = tx_dsp.k
         Eb_No_dB = np.arange(-6, 11, 1, dtype=float)
         SNR_dB = Eb_No_dB + 10 * np.log10(bits_per_symbol)
         BER_results: list[float] = []
@@ -180,7 +144,7 @@ class Orchestrator:
 
             ber_val: float = float(params.get_param("BER"))
             BER_results.append(ber_val)
-            print(f"{modulation} SNR = {snr_db:.1f} dB, BER = {ber_val:.6e}")
+            print(f"QPSK SNR = {snr_db:.1f} dB, BER = {ber_val:.6e}")
 
         # Plot
         plt.figure()
@@ -188,24 +152,20 @@ class Orchestrator:
         plt.grid(True)
         plt.xlabel('SNR dB (Es/N0)')
         plt.ylabel('Bit Error Rate (BER)')
-        plt.title(f'BER vs SNR for {modulation} in AWGN')
+        plt.title('BER vs SNR for QPSK in AWGN')
 
         # Theoretical BER
-        if modulation == "16QAM":
-            theory_ber = (3.0 / 8.0) * erfc(np.sqrt(0.4 * 10 ** (Eb_No_dB / 10)))
-        else:  # QPSK
-            theory_ber = 0.5 * erfc(np.sqrt(10 ** (Eb_No_dB / 10)))
-
+        theory_ber = 0.5 * erfc(np.sqrt(10 ** (Eb_No_dB / 10)))
         plt.semilogy(SNR_dB, theory_ber, label='Theoretical')
+
         plt.legend()
         plt.tight_layout()
         plt.show()
 
 
 # ----------------------------
-# Run simulations
+# Run simulations (QPSK only)
 # ----------------------------
 if __name__ == "__main__":
     orchestrator = Orchestrator()
-    orchestrator.run("16QAM")
-    orchestrator.run("QPSK")
+    orchestrator.run()
