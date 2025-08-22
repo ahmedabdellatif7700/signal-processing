@@ -26,7 +26,7 @@ class Rx:
             raise ValueError("Received signal is empty.")
         
         # Normalization
-        # rx = rx / np.sqrt(np.mean(np.abs(rx)**2))
+        rx = rx / np.sqrt(np.mean(np.abs(rx)**2))
         # # Function to decode a single symbol according to Gray coding
         
         
