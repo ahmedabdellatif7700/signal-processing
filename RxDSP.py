@@ -24,14 +24,12 @@ class Rx:
         """Process received QPSK signal using Gray-coded mapping and compute BER."""
         if len(rx) == 0:
             raise ValueError("Received signal is empty.")
-     
-        # Denormalization 
-        rx = rx / self._a
-
-        # rx = rx / (np.sum(channel_taps))
-
-
-        # Function to decode a single symbol according to Gray coding
+        
+        # Normalization
+        # rx = rx / np.sqrt(np.mean(np.abs(rx)**2))
+        # # Function to decode a single symbol according to Gray coding
+        
+        
         def decode_symbol(sym):
             if sym.real > 0 and sym.imag > 0:
                 return [0, 0]

@@ -55,6 +55,10 @@ class Channel:
             tx_symbols.astype(np.complex64)               # input
         )
 
+        # Check if tx and rx match exactly
+        if np.array_equal(tx_symbols, rx_symbols):
+            print("tx_symbols and rx_symbols match.")
+
         # ===================== %% NL BLOCK ==============================
         if self._nl == 0:
             # Linear channel, do nothing
@@ -62,6 +66,7 @@ class Channel:
         elif self._nl == 1:
             # tanh nonlinearity
             rx_symbols_nl = np.tanh(rx_symbols)
+            print("tanh nonlinearity")
         elif self._nl == 2:
             # Polynomial nonlinearity
             # rx_symbols_nl = rx_symbols + 0.2 * rx_symbols**2 - 0.1 * rx_symbols**3
@@ -73,20 +78,19 @@ class Channel:
         else:
             raise ValueError("Invalid NL choice. Must be 0-3.")
         
-        # Use the nonlinear output for AWGN
-        rx_symbols = rx_symbols_nl
+
 
 
         # Add AWGN if flag is True
         if self._awgn:
             snr_linear = 10 ** (snr_db / 10)
-            power = np.mean(np.abs(rx_symbols) ** 2)
+            power = np.mean(np.abs(rx_symbols_nl) ** 2)
             noise_std = np.sqrt(power / (2 * snr_linear)) if power > 0 else 0.0
-            noise = noise_std * (np.random.randn(len(rx_symbols)) + 1j * np.random.randn(len(rx_symbols)))
-            rx_symbols += noise.astype(np.complex64)
+            noise = noise_std * (np.random.randn(len(rx_symbols_nl)) + 1j * np.random.randn(len(rx_symbols_nl)))
+            rx_symbols_nl += noise.astype(np.complex64)
 
-        self._rx_symbols = rx_symbols
-        return self, rx_symbols
+        self.rx_symbols_nl = rx_symbols_nl
+        return self, rx_symbols_nl
     
     # getter for impluse response
     def get_impulse_response(self):

@@ -20,7 +20,7 @@ class SysOrch:
 
         # Simulation parameters
         self._Nbits = 2**14  # Total bits per SNR
-        self._ber_threshold = 1e-3  # Early stopping threshold
+        self._ber_threshold = 1e-4 # Early stopping threshold
 
     # -------------------------
     # Run simulation
@@ -30,14 +30,14 @@ class SysOrch:
         # Configuration: Tx → Channel → Rx
         # -----------------------------
         self.tx_dsp.configure(self._Nbits)           # Configure transmitter
-        self.channel.configure(choice=1, nl= 0, awgn=True)  # Configure channel
+        self.channel.configure(choice=1, nl= 1, awgn=True)  # Configure channel
         self.rx_dsp.configure()              # Configure receiver
 
         # -----------------------------
         # SNR setup
         # -----------------------------
         bits_per_symbol = 2  # QPSK
-        Eb_No_dB = np.arange(-6, 11, 1, dtype=float)
+        Eb_No_dB = np.arange( 0, 16, 1, dtype=float)
         SNR_dB = Eb_No_dB + 10 * np.log10(bits_per_symbol)
 
         # Store BER results
