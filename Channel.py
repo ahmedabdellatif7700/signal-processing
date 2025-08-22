@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.signal import lfilter
 
 class Channel:
     # Predefined channel impulse responses
@@ -10,6 +11,9 @@ class Channel:
         5: np.array([0.304, 0.903, 0.304], dtype=np.float32),
         6: np.array([0.341, 0.876, 0.341], dtype=np.float32),
     }
+
+
+
 
     def __init__(self):
         pass
@@ -36,11 +40,21 @@ class Channel:
         if len(tx_symbols) == 0:
             raise ValueError("Transmitted symbols are empty.")
 
-        # Apply channel (convolution) - commented for now
-        # r_k = np.convolve(tx_symbols, self._impulse_response, mode='same').astype(np.complex64)
+        # Apply channel (convolution)
+        rx_symbols = lfilter(
+            self._impulse_response.astype(np.complex64),  # b (FIR taps)
+            [1.0],                                        # a (IIR denominator = 1 → FIR)
+            tx_symbols.astype(np.complex64)               # input
+        )
+        # for debugging only .. this syntax is correct and is aligned 
+        # # For now, just pass tx_symbols directly
+        # rx_symbols_1 = tx_symbols.astype(np.complex64)
 
-        # For now, just pass tx_symbols directly
-        rx_symbols = tx_symbols.astype(np.complex64)
+        # if np.allclose(rx_symbols_1, rx_symbols):
+        #     print("They match")
+        # else:
+        #     print("They differ")
+
 
         # Add AWGN if flag is True
         if self._awgn:
