@@ -55,6 +55,8 @@ class Channel:
             tx_symbols.astype(np.complex64)               # input
         )
 
+        rx_symbols = np.asarray(rx_symbols, dtype=np.complex64)  # force ndarray
+        
         # Check if tx and rx match exactly
         if np.array_equal(tx_symbols, rx_symbols):
             print("tx_symbols and rx_symbols match.")
@@ -69,11 +71,11 @@ class Channel:
             print("tanh nonlinearity")
         elif self._nl == 2:
             # Polynomial nonlinearity
-            # rx_symbols_nl = rx_symbols + 0.2 * rx_symbols**2 - 0.1 * rx_symbols**3
+            rx_symbols_nl = rx_symbols + 0.2 * rx_symbols**2 - 0.1 * rx_symbols**3
             pass
         elif self._nl == 3:
             # Polynomial + cosine
-            # rx_symbols_nl = rx_symbols + 0.2 * rx_symbols**2 - 0.1 * rx_symbols**3 + 0.5 * np.cos(np.pi * rx_symbols)
+            rx_symbols_nl = rx_symbols + 0.2 * rx_symbols**2 - 0.1 * rx_symbols**3 + 0.5 * np.cos(np.pi * rx_symbols)
             pass
         else:
             raise ValueError("Invalid NL choice. Must be 0-3.")
