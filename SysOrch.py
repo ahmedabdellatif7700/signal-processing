@@ -30,7 +30,7 @@ class SysOrch:
         # Configuration: Tx → Channel → Rx
         # -----------------------------
         self.tx_dsp.configure(self._Nbits)           # Configure transmitter
-        self.channel.configure(choice=1, nl= 1, awgn=True)  # Configure channel
+        self.channel.configure(choice=1, nl= 2, awgn=True)  # Configure channel
         self.rx_dsp.configure()              # Configure receiver
 
         # -----------------------------

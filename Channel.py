@@ -56,7 +56,7 @@ class Channel:
         )
 
         rx_symbols = np.asarray(rx_symbols, dtype=np.complex64)  # force ndarray
-        
+
         # Check if tx and rx match exactly
         if np.array_equal(tx_symbols, rx_symbols):
             print("tx_symbols and rx_symbols match.")
@@ -72,16 +72,14 @@ class Channel:
         elif self._nl == 2:
             # Polynomial nonlinearity
             rx_symbols_nl = rx_symbols + 0.2 * rx_symbols**2 - 0.1 * rx_symbols**3
-            pass
+            print("Polynomial nonlinearity")
         elif self._nl == 3:
             # Polynomial + cosine
             rx_symbols_nl = rx_symbols + 0.2 * rx_symbols**2 - 0.1 * rx_symbols**3 + 0.5 * np.cos(np.pi * rx_symbols)
-            pass
+            print("Polynomial + cosine error")
         else:
             raise ValueError("Invalid NL choice. Must be 0-3.")
         
-
-
 
         # Add AWGN if flag is True
         if self._awgn:
