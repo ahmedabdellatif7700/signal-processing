@@ -9,10 +9,9 @@ class Rx:
         self._format = np.int16(0)
         self._ber = np.float32(0.0)
         self._B_hat = np.array([], dtype=np.int32)
+        self._a = np.float32(1.0 / np.sqrt(2.0))
 
-    def configure(self, format=1):
-        """Configure Rx (only QPSK supported)."""
-        self._format = np.int16(format)
+    def configure(self):
         # self._write_config()  
         pass
 
@@ -21,10 +20,16 @@ class Rx:
     #     """Optional placeholder if you want to store config somewhere."""
     #     pass
 
-    def process_signal(self, original_bits, rx):
+    def process_signal(self, original_bits, rx, channel_taps):
         """Process received QPSK signal using Gray-coded mapping and compute BER."""
         if len(rx) == 0:
             raise ValueError("Received signal is empty.")
+     
+        # Denormalization 
+        rx = rx / self._a
+
+        # rx = rx / (np.sum(channel_taps))
+
 
         # Function to decode a single symbol according to Gray coding
         def decode_symbol(sym):

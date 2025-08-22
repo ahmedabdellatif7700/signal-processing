@@ -66,3 +66,9 @@ class Channel:
 
         self._rx_symbols = rx_symbols
         return self, rx_symbols
+    
+    # getter for impluse response
+    def get_impulse_response(self):
+        """Return a copy of the current impulse response (keeps _impulse_response private)."""
+        return self._impulse_response.copy()
+

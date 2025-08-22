@@ -31,7 +31,7 @@ class SysOrch:
         # -----------------------------
         self.tx_dsp.configure(self._Nbits)           # Configure transmitter
         self.channel.configure(choice=1, awgn=True)  # Configure channel
-        self.rx_dsp.configure(format=1)              # Configure receiver
+        self.rx_dsp.configure()              # Configure receiver
 
         # -----------------------------
         # SNR setup
@@ -66,7 +66,8 @@ class SysOrch:
             # -------------------------
             # Receiver DSP: decode & compute BER
             # -------------------------
-            _, ber_val = self.rx_dsp.process_signal(bits, rx_symbols)
+            channel_taps = self.channel.get_impulse_response()
+            _, ber_val = self.rx_dsp.process_signal(bits, rx_symbols, channel_taps)
             BER_results.append(ber_val)
             print(f"QPSK SNR = {snr_db:.1f} dB, BER = {ber_val:.6e}")
 
