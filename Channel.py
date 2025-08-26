@@ -96,4 +96,6 @@ class Channel:
     def get_impulse_response(self):
         """Return a copy of the current impulse response (keeps _impulse_response private)."""
         return self._impulse_response.copy()
-
+    
+    def get_channel_choice(self):
+        return self._choice

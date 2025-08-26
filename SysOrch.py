@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.special import erfc
 from TxDSP import TxDSP
-from RxDSP import Rx
+from RxDSP import RxDSP
 from Channel import Channel
 
 # -------------------------
@@ -16,7 +16,7 @@ class SysOrch:
         # -----------------------------
         self.tx_dsp = TxDSP()
         self.channel = Channel()
-        self.rx_dsp = Rx()
+        self.rx_dsp = RxDSP()
 
         # Simulation parameters
         self._Nbits = 2**14  # Total bits per SNR
@@ -30,7 +30,7 @@ class SysOrch:
         # Configuration: Tx → Channel → Rx
         # -----------------------------
         self.tx_dsp.configure(self._Nbits)           # Configure transmitter
-        self.channel.configure(choice=1, nl= 2, awgn=True)  # Configure channel
+        self.channel.configure(choice=3, nl= 1, awgn=True)  # Configure channel
         self.rx_dsp.configure()              # Configure receiver
 
         # -----------------------------
@@ -66,8 +66,8 @@ class SysOrch:
             # -------------------------
             # Receiver DSP: decode & compute BER
             # -------------------------
-            channel_taps = self.channel.get_impulse_response()
-            _, ber_val = self.rx_dsp.process_signal(bits, rx_symbols, channel_taps)
+            choice = self.channel.get_channel_choice()
+            _, ber_val = self.rx_dsp.process_signal(tx_symbols, rx_symbols, choice)
             BER_results.append(ber_val)
             print(f"QPSK SNR = {snr_db:.1f} dB, BER = {ber_val:.6e}")
 
