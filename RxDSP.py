@@ -9,7 +9,6 @@ class RxDSP:
         self._format = "QPSK"
         self._ber = np.float32(0.0)
         self.decoded_bits = np.array([], dtype=np.int32)  # renamed from _B_hat
-        self._initCut = 1  # default initial cut for multi-tap channels
         # QPSK Gray-coded constellation
         self._C = np.array([1+1j, -1+1j, -1-1j, 1-1j])
         self._B = np.array([[0,0],[0,1],[1,1],[1,0]])
@@ -17,7 +16,7 @@ class RxDSP:
     def configure(self):
         pass
 
-    def preprocess_signal(self, r_k):
+    def normalize_signal(self, r_k):
         """RMS normalize received signal."""
         if len(r_k) == 0:
             raise ValueError("Received signal is empty.")
@@ -53,7 +52,7 @@ class RxDSP:
 
     def process_signal(self, t_k, r_k, choice):
         """
-        Process received QPSK signal, apply InitCut, align, decode, and compute BER.
+        Process received QPSK signal, align, decode, and compute BER.
 
         Parameters
         ----------
@@ -67,18 +66,8 @@ class RxDSP:
         if len(t_k) == 0 or len(r_k) == 0:
             raise ValueError("Transmitted or received signal is empty.")
 
-        # Apply InitCut if needed
-        match choice:
-            case 1:
-                pass
-            case 2 | 3 | 4 | 5 | 6:
-                t_k = t_k[self._initCut:]
-                r_k = r_k[self._initCut:]
-            case _:
-                raise ValueError(f"Invalid choice value: {choice}. Must be 1 or 2-6.")
-
         # RMS normalize received signal
-        r_k = self.preprocess_signal(r_k)
+        r_k = self.normalize_signal(r_k)
 
         # Align received to transmitted sequence using cross-correlation
         r_k, t_k = self._cross_correlation_align(r_k, t_k)
