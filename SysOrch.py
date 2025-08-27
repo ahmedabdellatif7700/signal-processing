@@ -26,76 +26,88 @@ class SysOrch:
     # Run simulation
     # -------------------------
     def run(self):
-        # -----------------------------
-        # Configuration: Tx → Channel → Rx
-        # -----------------------------
-        self.tx_dsp.configure(self._Nbits)           # Configure transmitter
-        self.channel.configure(choice=3, nl= 1, awgn=True)  # Configure channel
-        self.rx_dsp.configure()              # Configure receiver
+         # Loop over all channel choices and nonlinearities
+        for choice in range(1, 7):  # 1-6
+            for nl in range(0, 4):  # 0-3
+                print(f"\n--- Running for choice={choice}, nl={nl} ---")
+                # -----------------------------
+                # Configuration: Tx → Channel → Rx
+                # -----------------------------
+                self.tx_dsp.configure(self._Nbits)           # Configure transmitter
+                self.channel.configure(choice, nl, awgn=True)  # Configure channel
+                self.rx_dsp.configure()              # Configure receiver
 
-        # -----------------------------
-        # SNR setup
-        # -----------------------------
-        bits_per_symbol = 2  # QPSK
-        Eb_No_dB = np.arange( 0, 16, 1, dtype=float)
-        SNR_dB = Eb_No_dB + 10 * np.log10(bits_per_symbol)
+                # -----------------------------
+                # SNR setup
+                # -----------------------------
+                bits_per_symbol = 2  # QPSK
+                Eb_No_dB = np.arange( 0, 16, 1, dtype=float)
+                SNR_dB = Eb_No_dB + 10 * np.log10(bits_per_symbol)
 
-        # Store BER results
-        BER_results = []
+                # Store BER results
+                BER_results = []
 
-        # -----------------------------
-        # Main loop: Tx → Channel → Rx for each SNR
-        # -----------------------------
-        for snr_db in SNR_dB:
-            # -------------------------
-            # Generate random bits
-            # -------------------------
-            np.random.seed(0)  # Reproducible results
-            bits = np.random.randint(0, 2, self._Nbits, dtype=int)
+                # -----------------------------
+                # Main loop: Tx → Channel → Rx for each SNR
+                # -----------------------------
+                for snr_db in SNR_dB:
+                    # -------------------------
+                    # Generate random bits
+                    # -------------------------
+                    np.random.seed(0)  # Reproducible results
+                    bits = np.random.randint(0, 2, self._Nbits, dtype=int)
 
-            # -------------------------
-            # Transmitter DSP
-            # -------------------------
-            _, tx_symbols = self.tx_dsp.generate_signal(bits)
+                    # -------------------------
+                    # Transmitter DSP
+                    # -------------------------
+                    _, tx_symbols = self.tx_dsp.generate_signal(bits)
 
-            # -------------------------
-            # Channel: add noise (AWGN)
-            # -------------------------
-            _, rx_symbols = self.channel.apply_channel(tx_symbols, snr_db=snr_db)
+                    # -------------------------
+                    # Channel: add noise (AWGN)
+                    # -------------------------
+                    _, rx_symbols = self.channel.apply_channel(tx_symbols, snr_db=snr_db)
 
-            # -------------------------
-            # Receiver DSP: decode & compute BER
-            # -------------------------
-            choice = self.channel.get_channel_choice()
-            _, ber_val = self.rx_dsp.process_signal(tx_symbols, rx_symbols, choice)
-            BER_results.append(ber_val)
-            print(f"QPSK SNR = {snr_db:.1f} dB, BER = {ber_val:.6e}")
+                    # -------------------------
+                    # Receiver DSP: decode & compute BER
+                    # -------------------------
+                    choice = self.channel.get_channel_choice()
+                    _, ber_val = self.rx_dsp.process_signal(tx_symbols, rx_symbols, choice)
+                    BER_results.append(ber_val)
+                    print(f"QPSK SNR = {snr_db:.1f} dB, BER = {ber_val:.6e}")
 
-            # -------------------------
-            # Early stopping check
-            # -------------------------
-            if ber_val < self._ber_threshold:
-                print(f"Early stopping: BER < {self._ber_threshold:.1e} at SNR = {snr_db:.1f} dB")
-                break  # Stop simulation for higher SNRs
+                    # -------------------------
+                    # Early stopping check
+                    # -------------------------
+                    if ber_val < self._ber_threshold:
+                        print(f"Early stopping: BER < {self._ber_threshold:.1e} at SNR = {snr_db:.1f} dB")
+                        break  # Stop simulation for higher SNRs
 
-        # -----------------------------
-        # Post-processing: plot BER
-        # -----------------------------
-        plt.figure()
-        plt.semilogy(SNR_dB[:len(BER_results)], BER_results, 'or', label='Simulated')
-        plt.grid(True)
-        plt.xlabel('SNR dB (Es/N0)')
-        plt.ylabel('Bit Error Rate (BER)')
-        plt.title('BER vs SNR for QPSK in AWGN')
+                # -----------------------------
+                # Plot BER for this configuration
+                # -----------------------------
+                plt.figure()
+                # Define NL type as a string for the legend
+                nl_type = {
+                    0: "Linear",
+                    1: "tanh",
+                    2: "Polynomial",
+                    3: "Polynomial + cosine"
+                }[nl]
 
-        # Theoretical BER for QPSK in AWGN
-        theory_ber = 0.5 * erfc(np.sqrt(10 ** (Eb_No_dB[:len(BER_results)] / 10)))
-        plt.semilogy(SNR_dB[:len(BER_results)], theory_ber, label='Theoretical')
+                # Plot simulated BER
+                plt.semilogy(
+                    SNR_dB[:len(BER_results)],
+                    BER_results,
+                    'or',
+                    label=f'Simulated (Channel={choice}, NL={nl_type})')
+                
+                # Theoretical BER for QPSK in AWGN
+                theory_ber = 0.5 * erfc(np.sqrt(10 ** (Eb_No_dB[:len(BER_results)] / 10)))
+                plt.semilogy(SNR_dB[:len(BER_results)], theory_ber, label='Theoretical')
 
-        plt.legend()
-        plt.tight_layout()
-        plt.show()
-
+                plt.legend()
+                plt.tight_layout()
+                plt.show()
 
 # -----------------------------
 # Run simulation

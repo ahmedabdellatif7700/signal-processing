@@ -25,7 +25,7 @@ class Channel:
     def __init__(self):
         pass
 
-    def configure(self, choice=1, nl = 0,awgn=True):
+    def configure(self, choice, nl, awgn):
         """Configure channel type and whether to add AWGN."""
         if choice not in self._channel_responses:
             raise ValueError("Invalid channel choice. Must be 1-6.")
@@ -33,15 +33,25 @@ class Channel:
         self._nl = nl
         self._awgn = awgn
         self._impulse_response = self._channel_responses[self._choice]
-        # self._write_config()
+
+        # Print channel impulse response and NL type
+        print(f"Channel Impulse Response (choice={choice}): {self._impulse_response}")
+        if nl == 0:
+            print("Nonlinearity: Linear (NL=0)")
+        elif nl == 1:
+            print("Nonlinearity: tanh (NL=1)")
+        elif nl == 2:
+            print("Nonlinearity: Polynomial (NL=2)")
+        elif nl == 3:
+            print("Nonlinearity: Polynomial + cosine (NL=3)")
+        else:
+            raise ValueError("Invalid NL choice. Must be 0-3.")
+        self._write_config()
         return self
 
-    # def _write_config(self):
-    #     """Optional: write configuration to external params object if it exists."""
-        # if self._params is not None:
-        #     self._params.channel_choice = self._choice
-        #     self._params.awgn = self._awgn
-        #     self._params.impulse_response = self._impulse_response.copy()
+    def _write_config(self):
+        pass
+    
 
     def apply_channel(self, tx_symbols, snr_db):
         """Apply channel impulse response and optional AWGN to transmitted symbols."""
