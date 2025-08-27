@@ -50,7 +50,7 @@ class RxDSP:
             bits.extend(self._B[idx])
         return np.array(bits, dtype=int)
 
-    def process_signal(self, t_k, r_k, choice):
+    def process_signal(self, t_k, r_k):
         """
         Process received QPSK signal, align, decode, and compute BER.
 
@@ -60,8 +60,6 @@ class RxDSP:
             Transmitted QPSK symbols (complex).
         r_k : np.ndarray
             Received QPSK symbols (complex).
-        choice : int
-            Channel choice (1 → no cut, 2-6 → apply InitCut).
         """
         if len(t_k) == 0 or len(r_k) == 0:
             raise ValueError("Transmitted or received signal is empty.")

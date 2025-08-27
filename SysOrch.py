@@ -70,8 +70,7 @@ class SysOrch:
                     # -------------------------
                     # Receiver DSP: decode & compute BER
                     # -------------------------
-                    choice = self.channel.get_channel_choice()
-                    _, ber_val = self.rx_dsp.process_signal(tx_symbols, rx_symbols, choice)
+                    _, ber_val = self.rx_dsp.process_signal(tx_symbols, rx_symbols)
                     BER_results.append(ber_val)
                     print(f"QPSK SNR = {snr_db:.1f} dB, BER = {ber_val:.6e}")
 
