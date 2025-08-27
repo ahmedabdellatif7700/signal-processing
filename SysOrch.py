@@ -85,8 +85,6 @@ class SysOrch:
                 # -----------------------------
                 # Plot BER for this configuration
                 # -----------------------------
-                plt.figure()
-                # Define NL type as a string for the legend
                 nl_type = {
                     0: "Linear",
                     1: "tanh",
@@ -94,21 +92,43 @@ class SysOrch:
                     3: "Polynomial + cosine"
                 }[nl]
 
+                # Define a flag to control plotting behavior
+                hold_on = True  # Set to True to plot all NLs for a channel in one figure
+
+                if not hold_on or nl == 0:  # Create a new figure for each channel or if hold_on is False
+                    plt.figure()
+
                 # Plot simulated BER
                 plt.semilogy(
                     SNR_dB[:len(BER_results)],
                     BER_results,
-                    'or',
-                    label=f'Simulated (Channel={choice}, NL={nl_type})')
-                
-                # Theoretical BER for QPSK in AWGN
+                    'o-',  # Use line + markers for clarity
+                    label=f'Simulated (Channel={choice}, NL={nl_type})'
+                )
+
+                # Plot theoretical BER
                 theory_ber = 0.5 * erfc(np.sqrt(10 ** (Eb_No_dB[:len(BER_results)] / 10)))
-                plt.semilogy(SNR_dB[:len(BER_results)], theory_ber, label='Theoretical')
+                plt.semilogy(
+                    SNR_dB[:len(BER_results)],
+                    theory_ber,
+                    '--',  # Dashed line for theoretical
+                    label='Theoretical'
+                )
+
+                plt.grid(True, which="both", ls="--")  # Enable grid for both major and minor ticks
+                plt.xlabel('SNR dB (Es/N0)')
+                plt.ylabel('Bit Error Rate (BER)')
+
+                if hold_on:
+                    plt.title(f'BER vs SNR (Channel={choice})')  # One title for all NLs in this channel
+                else:
+                    plt.title(f'BER vs SNR (Channel={choice}, NL={nl_type})')  # Separate title for each NL
 
                 plt.legend()
                 plt.tight_layout()
-                plt.show()
 
+                if not hold_on or nl == 3:  # Show plot at the end of the inner loop if hold_on is False, or after last NL
+                    plt.show()
 # -----------------------------
 # Run simulation
 # -----------------------------
