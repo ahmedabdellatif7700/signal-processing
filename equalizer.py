@@ -1,104 +1,127 @@
 import numpy as np
 
-def adaptive_equalizer_qam(x, a, P):
+class LinearEqualizer:
     """
-    Adaptive equalization at 2SPS for QAM signals.
-    Parameters:
-    - x: 2D array of received signals (each column is a signal) at 2SPS.
-    - a: 2D array of transmitted training sequences.
-    - P: Dictionary of equalizer parameters.
-    Returns:
-    - y: 2D array of processed signals (each column is a signal) at 2SPS.
-    - w: Equalizer taps (2D array).
-    - e: Equalizer error (2D array).
+    Linear equalizer with LMS (can be extended to RLS/CMA) and
+    hybrid supervised -> decision-directed adaptation.
     """
-    # Retrieve parameters
-    Ntaps = P['Ntaps']  # Taps of the adaptive equalizer (must be even)
-    nSpS = P['nSpS']    # Number of samples per symbol
-    mus = P['mus']      # Adaptation coefficients
-    methods = P['methods']  # Equalizer algorithms (e.g., ['lms', 'lms_dd'])
-    eqmode = P['eqmode']    # Equalizer type (e.g., 'FFE')
-    Ks = P['Ks']        # Number of symbols to run the equalizer
-    C = P['C']          # QAM constellation
 
-    # Check input parameters
-    if not isinstance(x, np.ndarray) or x.ndim != 2:
-        raise ValueError("x must be a 2D array")
-    if not isinstance(a, np.ndarray) or a.ndim != 2:
-        raise ValueError("a must be a 2D array")
-    if Ntaps % 2 != 0:
-        raise ValueError("Ntaps must be even")
-    if len(mus) != len(methods):
-        raise ValueError("mus and methods must have the same length")
-    if len(Ks) != len(methods):
-        raise ValueError("Ks and methods must have the same length")
+    def __init__(self,
+                 num_taps=8,
+                 algorithm='LMS',
+                 step_size=0.01,
+                 forgetting_factor=0.3,
+                 delta=1e3,
+                 reference_tap=None,
+                 constellation=None):
+        self.num_taps = int(num_taps)
+        self.algorithm = algorithm.upper()
+        assert self.algorithm in ('LMS', 'RLS', 'CMA'), "Algorithm must be 'LMS', 'RLS', or 'CMA'"
+        self.step_size = float(step_size)
+        self.forgetting_factor = float(forgetting_factor)
+        self.delta = float(delta)
+        if reference_tap is None:
+            self.reference_tap = (self.num_taps // 2)
+        else:
+            self.reference_tap = max(0, int(reference_tap) - 1)
+        self.constellation = None if constellation is None else np.array(constellation, dtype=complex)
+        self.reset()
 
-    # Precalculate parameters
-    Lx = x.shape[0]     # Number of samples to process
-    Nrx = x.shape[1]    # Number of received signals
-    Ntx = a.shape[1]    # Number of transmitted signals
+        # Print configuration
+        print("=== LinearEqualizer Configuration ===")
+        print(f"Algorithm: {self.algorithm}")
+        print(f"NumTaps: {self.num_taps}")
+        print(f"StepSize / ForgettingFactor: {self.step_size} / {self.forgetting_factor}")
+        print(f"ReferenceTap (0-based): {self.reference_tap}")
+        if self.constellation is not None:
+            print(f"Constellation: {self.constellation}")
+        print("====================================\n")
 
-    # Initialize outputs as complex arrays
-    y = np.zeros((Lx, Ntx), dtype=complex)  # Output signal (complex)
-    e = np.zeros((Lx, Ntx), dtype=complex)  # Error signal (complex)
-    w = np.zeros((Nrx * Ntaps, Ntx), dtype=complex)  # Equalizer taps (complex)
+    def reset(self):
+        """Initialize weights and RLS matrix if needed."""
+        self.weights = np.zeros(self.num_taps, dtype=complex)
+        self.weights[self.reference_tap] = 1.0 + 0j
+        self.P = (self.delta * np.eye(self.num_taps, dtype=complex)) if self.algorithm == 'RLS' else None
 
-    # Run the correct equalizer
-    if eqmode == 'FFE':
-        y, w, e = eq_FFE(x, Lx, Nrx, a, Ntx, mus, Ntaps, nSpS, Ks, methods, C)
-    else:
-        raise ValueError(f"Equalizer mode {eqmode} not supported")
+    def _decision(self, y):
+        """Decision-directed mapping to nearest constellation point."""
+        if self.constellation is not None:
+            dists = np.abs(y.reshape(-1, 1) - self.constellation.reshape(1, -1))
+            idx = dists.argmin(axis=1)
+            return self.constellation[idx]
+        else:
+            return np.sign(y.real) + 1j*np.sign(y.imag)
 
-    # Cut head and tail
-    y = y[Ntaps:Lx - Ntaps - 1, :]
-    return y, w, e
+    def _compute_cma_R(self):
+        if self.constellation is None:
+            return 1.0
+        magsq = np.abs(self.constellation)**2
+        return (np.mean(magsq**2) / np.mean(magsq))
 
-def eq_FFE(x, Lx, Nrx, a, Ntx, mus, Ntaps, nSpS, Ks, methods, C):
-    """
-    Complex-valued Data-Aided/Decision-Directed FFE for QAM.
-    """
-    Lpk = Ntaps // 2  # Peak position in equalizer taps
-    vec = np.arange(-Lpk, Lpk)  # Preallocate data vector
-    fin = 0  # Initialize end index
+    def equalize(self, x, d=None, Ks=None):
+        """
+        Equalize a sequence with optional supervised training and decision-directed mode.
 
-    # Initialize as complex arrays
-    y = np.zeros((Lx, Ntx), dtype=complex)  # Output signal (complex)
-    e = np.zeros((Lx, Ntx), dtype=complex)  # Error signal (complex)
-    w = np.zeros((Nrx * Ntaps, Ntx), dtype=complex)  # Equalizer taps (complex)
+        Parameters
+        ----------
+        x : array_like
+            Received complex samples (1D)
+        d : array_like, optional
+            Desired sequence for supervised training
+        Ks : int, optional
+            Number of supervised training symbols. After Ks, decision-directed mode is used.
 
-    for m in range(len(methods)):
-        iniz = max(Ntaps, fin + 1)  # Starting point of equalizer
-        fin = min(Lx - Ntaps - 1, Ks[m])  # Ending point of equalizer
-        mu = mus[m]  # Adaptive coefficient
+        Returns
+        -------
+        y_out : np.ndarray
+            Equalizer output sequence
+        e_out : np.ndarray
+            Error sequence used for adaptation
+        """
+        x = np.asarray(x, dtype=complex).ravel()
+        if d is not None:
+            d = np.asarray(d, dtype=complex).ravel()
+        N = x.size
+        pad = np.zeros(self.num_taps - 1, dtype=complex)
+        buffer = np.concatenate([pad, x])
+        y_out = np.empty(N, dtype=complex)
+        e_out = np.empty(N, dtype=complex)
 
-        for nn in range(iniz, fin + 1):
-            # Apply equalizer
-            u = x[nn + vec, :].reshape(Nrx * Ntaps, 1).flatten()  # u is complex
-            y[nn, :] = np.dot(u, w)  # y is complex
+        if Ks is None:
+            Ks = N if d is not None else 0
+        Ks = int(Ks)
 
-            # Calculate error every nSpS samples
-            if nn % nSpS == 0:
-                if methods[m] == 'lms':
-                    i_a = (nn // nSpS - 1) % a.shape[0]  # Index of training symbol
-                    adec = a[i_a, :]  # adec is complex (QPSK symbols)
-                elif methods[m] == 'lms_dd':
-                    adec = qam_hard_decision(y[nn, :], C)  # adec is complex
+        print(f"Starting equalization: {N} samples, Ks={Ks} supervised samples\n")
+
+        for n in range(N):
+            u = buffer[n : n + self.num_taps][::-1]  # newest first
+            y = np.vdot(self.weights, u)
+
+            # Determine error
+            if (d is not None) and (n < Ks):
+                desired = d[n]
+                err = desired - y
+                mode = "Training"
+            else:
+                if self.constellation is None:
+                    err = 0.0 + 0j
+                    mode = "No adaptation (no constellation)"
                 else:
-                    raise ValueError(f"Method {methods[m]} not supported")
+                    decided = self._decision(np.array([y]))[0]
+                    err = decided - y
+                    mode = "Decision-Directed"
 
-                e[nn, :] = y[nn, :] - adec  # e is complex
-                w -= mu * np.outer(u, e[nn, :])  # Update complex weights
+            # Update weights (LMS only for now)
+            if self.algorithm == "LMS":
+                self.weights += self.step_size * np.conj(err) * u
 
-    # Cut head and tail
-    y = y[Ntaps:Lx - Ntaps - 1, :]
-    return y, w, e
+            y_out[n] = y
+            e_out[n] = err
 
-def qam_hard_decision(x, C):
-    """
-    QAM hard decision: maps input to the nearest constellation point.
-    Returns complex values.
-    """
-    x = np.atleast_1d(x)
-    distances = np.abs(C - x[:, np.newaxis]) ** 2
-    d = C[np.argmin(distances, axis=1)]
-    return d
+            # Debug print every 100 samples
+            if n % max(1, N//10) == 0:
+                print(f"Sample {n+1}/{N}: y={y:.4f}, err={err:.4f}, mode={mode}")
+                print(f"Current weights (center 3 taps): {self.weights[max(0,n-1):min(self.num_taps,n+2)]}\n")
+
+        print("Equalization completed.\n")
+        return y_out, e_out

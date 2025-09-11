@@ -16,36 +16,24 @@ class SysOrch:
         self.rx_dsp = RxDSP()
         # Simulation parameters
         self._Nbits = 2**14  # Total bits per SNR
-        self._ber_threshold = 1e-4  # Early stopping threshold
+        self._ber_threshold = 1e-7  # Early stopping threshold
         # -----------------------------
         # Initialize P for RxDSP
         # -----------------------------
         self.P = {
-            "init_cut": 0,
-            "init_nsps": 1,
-            "ovsa": 1,
-            "mus": [0.01, 0.05],
-            "eq_type": "FFE",  # Equalizer type
-            "disp_out": True,
-            "taps": 6,  # Must be even for equalizer
-            "nSpS": 1,  # Number of samples per symbol
-            "Ks": [1000],  # Number of symbols to run equalizer
-            "Kcut": 0,  # Cut after equalization
-            "Rs": 1e9,  # Symbol rate (Hz)
-            "fADC": 2e9,  # ADC sampling frequency (Hz)
-            "Align": {
-                "cut": 100,
-                "power": 0.9,
-                "align_tx": "correlation"
-            },
-            "methods": ["lms"],  # Must be a list of strings (e.g., ["lms"] or ["lms", "lms_dd"])
-            "C": [1+1j, -1+1j, -1-1j, 1-1j]  # QPSK constellation (optional, can be defined in RxDSP class)
+            "mus": [0.01],            # Step size for equalizer
+            "eq_type": "None",          # Equalizer type
+            "disp_out": True,          # Display output
+            "taps": 6,                 # Number of equalizer taps
+            "Ks": [1000],              # Training symbols
+            "methods": ["lms"],        # Equalizer algorithm
+            "C": [1+1j, -1+1j, -1-1j, 1-1j]  # QPSK constellation
         }
 
     def run(self):
         """Run the simulation loop."""
-        for choice in range(1, 2):  # 1-6
-            for nl in range(0, 2):  # 0-3
+        for choice in range(1, 2):  # Channel type
+            for nl in range(0, 2):  # Nonlinearity type
                 print(f"\n--- Running for choice={choice}, nl={nl} ---")
                 # -----------------------------
                 # Configuration: Tx → Channel → Rx
@@ -68,7 +56,7 @@ class SysOrch:
                     # -------------------------
                     # Generate random bits
                     # -------------------------
-                    np.random.seed(0)  # Reproducible results
+                    np.random.seed(0)
                     bits = np.random.randint(0, 2, self._Nbits, dtype=int)
                     # -------------------------
                     # Transmitter DSP
@@ -81,7 +69,7 @@ class SysOrch:
                     # -------------------------
                     # Receiver DSP: decode & compute BER
                     # -------------------------
-                    ber_val, _, _, = self.rx_dsp.process_signal(tx_symbols, rx_symbols, self.P)
+                    ber_val, _ = self.rx_dsp.process_signal(tx_symbols, rx_symbols, self.P)
                     BER_results.append(ber_val)
                     print(f"QPSK SNR = {snr_db:.1f} dB, BER = {ber_val:.6e}")
                     # -------------------------
@@ -93,41 +81,19 @@ class SysOrch:
                 # -----------------------------
                 # Plot BER for this configuration
                 # -----------------------------
-                nl_type = {
-                    0: "Linear",
-                    1: "tanh",
-                    2: "Polynomial",
-                    3: "Polynomial + cosine"
-                }[nl]
-                hold_on = False
-                if not hold_on or nl == 0:
-                    plt.figure()
-                # Plot simulated BER
-                plt.semilogy(
-                    SNR_dB[:len(BER_results)],
-                    BER_results,
-                    'o-',
-                    label=f'Simulated (Channel={choice}, NL={nl_type})'
-                )
-                # Plot theoretical BER
+                nl_type = {0: "Linear", 1: "tanh"}[nl]
+                plt.figure()
+                plt.semilogy(SNR_dB[:len(BER_results)], BER_results, 'o-', 
+                             label=f'Simulated (Channel={choice}, NL={nl_type})')
                 theory_ber = 0.5 * erfc(np.sqrt(10 ** (Eb_No_dB[:len(BER_results)] / 10)))
-                plt.semilogy(
-                    SNR_dB[:len(BER_results)],
-                    theory_ber,
-                    '--',
-                    label='Theoretical'
-                )
+                plt.semilogy(SNR_dB[:len(BER_results)], theory_ber, '--', label='Theoretical')
                 plt.grid(True, which="both", ls="--")
                 plt.xlabel('SNR dB (Es/N0)')
                 plt.ylabel('Bit Error Rate (BER)')
-                if hold_on:
-                    plt.title(f'BER vs SNR (Channel={choice})')
-                else:
-                    plt.title(f'BER vs SNR (Channel={choice}, NL={nl_type})')
+                plt.title(f'BER vs SNR (Channel={choice}, NL={nl_type})')
                 plt.legend()
                 plt.tight_layout()
-                if not hold_on or nl == 3:
-                    plt.show()
+                plt.show()
 
 if __name__ == "__main__":
     orchestrator = SysOrch()
