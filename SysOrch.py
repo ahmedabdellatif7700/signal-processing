@@ -16,7 +16,7 @@ class SysOrch:
         self.rx_dsp = RxDSP()
         # Simulation parameters
         self._Nbits = 2**14  # Total bits per SNR
-        self._ber_threshold = 1e-7  # Early stopping threshold
+        self._ber_threshold = 1e-4  # Early stopping threshold
         # -----------------------------
         # Initialize P for RxDSP
         # -----------------------------

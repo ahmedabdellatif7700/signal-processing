@@ -46,17 +46,6 @@ class RxDSP:
                 reference_tap=ref_tap,
                 constellation=self._C
             )
-
-            # Print equalizer parameters
-            print(f"[RxDSP] LinearEqualizer configured:")
-            print(f"  Algorithm: {self._eq.algorithm}")
-            print(f"  NumTaps: {self._eq.num_taps}")
-            print(f"  StepSize / Mu: {self._eq.step_size}")
-            if self._eq.algorithm == "RLS":
-                print(f"  ForgettingFactor: {self._eq.forgetting_factor}")
-                print(f"  InitialInverseCorrelationMatrix: {self._eq.delta}")
-            print(f"  Constellation: {self._eq.constellation}")
-            print(f"  ReferenceTap: {self._eq.reference_tap}")
         else:
             self._eq = None
 
