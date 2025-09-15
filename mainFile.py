@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.signal import lfilter
-
+from scipy.linalg import toeplitz
+import matplotlib.pylab as plt
 
 # ======================= TxDSP
 class TxDSP:
@@ -17,43 +18,20 @@ class TxDSP:
         unitAveragePower=False,
         outputDataType=None,
     ):
-        """
-        Quadrature amplitude modulation (QAM) of the message signal x.
-
-        Parameters:
-        - x: Input message signal (integers between 0 and M-1 if bitInput is False, otherwise binary).
-        - M: Constellation order (must be an integer power of two).
-        - symbolOrderStr: 'bin', 'gray', or 'custom'.
-        - symbolOrderVector: Custom symbol order vector (only used if symbolOrderStr is 'custom').
-        - bitInput: If True, x is treated as a bit stream.
-        - unitAveragePower: If True, constellation is normalized to unit average power.
-        - outputDataType: Data type of the output (e.g., np.complex64, np.complex128).
-
-        Returns:
-        - y: Modulated complex envelope.
-        - const: QAM constellation used for modulation.
-        """
-
         def get_constellation(M, unitAveragePower, outputDataType):
-            """Generate QAM constellation."""
             if outputDataType is None:
                 outputDataType = (
                     np.complex128 if x.dtype == np.float64 else np.complex64
                 )
-
-            # Generate standard or unit-power constellation
             if unitAveragePower:
                 const = get_unit_power_constellation(M, outputDataType)
             else:
                 const = get_standard_constellation(M, outputDataType)
-
-            # Reshape constellation to match input orientation
-            if x.ndim > 1 and x.shape[0] > 1 and x.shape[1] == 1:  # Column vector
+            if x.ndim > 1 and x.shape[0] > 1 and x.shape[1] == 1:
                 const = const.reshape(-1, 1)
             return const
 
         def get_standard_constellation(M, dtype):
-            """Generate standard QAM constellation."""
             k = int(np.log2(M))
             if k % 2 != 0:
                 raise ValueError("M must be a square power of 2 for QAM.")
@@ -64,14 +42,12 @@ class TxDSP:
             return const
 
         def get_unit_power_constellation(M, dtype):
-            """Generate unit average power QAM constellation."""
             const = get_standard_constellation(M, dtype)
             power = np.mean(np.abs(const) ** 2)
             const = const / np.sqrt(power)
             return const
 
         def process_symbols(x, M, symbolOrder, symbolOrderVector):
-            """Map input symbols to constellation indices."""
             if symbolOrder.lower() == "custom":
                 if symbolOrderVector is None:
                     raise ValueError(
@@ -82,18 +58,15 @@ class TxDSP:
                 msg = symbolOrderMap[x]
             elif symbolOrder.lower() == "gray":
                 msg = bin2gray(x, M)
-            else:  # 'bin'
+            else:
                 msg = x
             return msg
 
         def bin2gray(x, M):
-            """Convert binary to Gray-coded indices."""
-            k = int(np.log2(M))
             gray = x ^ (x >> 1)
             return gray
 
         def process_bit_input(x, M, symbolOrder, symbolOrderVector, const):
-            """Process bit input: convert bits to symbols."""
             k = int(np.log2(M))
             if x.size % k != 0:
                 raise ValueError(f"Input bit stream length must be a multiple of {k}.")
@@ -104,12 +77,10 @@ class TxDSP:
             return y
 
         def process_int_input(x, M, symbolOrder, symbolOrderVector, const):
-            """Process integer input: map directly to constellation."""
             msg = process_symbols(x, M, symbolOrder, symbolOrderVector)
             y = const[msg]
             return y
 
-        # Main function logic
         const = get_constellation(M, unitAveragePower, outputDataType)
 
         if bitInput:
@@ -122,9 +93,8 @@ class TxDSP:
 
 # ======================= Channel
 class Channel:
-    """Linear/nonlinear channel with optional AWGN."""
-    _responses = {1: np.array([1.0,0,0], dtype=float),
-                  2: np.array([0.447,0.894,0], dtype=float)}
+    _responses = {1: np.array([1.0, 0, 0], dtype=float),
+                  2: np.array([0.447, 0.894, 0], dtype=float)}
 
     def configure(self, choice, nl, awgn):
         self._choice = choice
@@ -134,59 +104,40 @@ class Channel:
         print(f"Channel configured: choice={choice}, NL={nl}, impulse_response={self._impulse_response}")
         return self
 
-    def apply_channel(self, t_k , snr_db):
+    def apply_channel(self, t_k, snr_db):
         r_k = lfilter(self._impulse_response, [1.0], t_k)
-        if self._nl==1: 
+        if self._nl == 1:
             r_k = np.tanh(r_k)
-        elif self._nl==2:
-            # rx = rx + 0.2*rx**2 - 0.1*rx**3
+        elif self._nl == 2:
             pass
         if self._awgn:
-            snr_lin = 10**(snr_db/10)
-            noise_std = np.sqrt(np.mean(np.abs(r_k)**2)/(2*snr_lin))
-            r_k += noise_std*(np.random.randn(len(r_k))+1j*np.random.randn(len(r_k)))
+            snr_lin = 10 ** (snr_db / 10)
+            noise_std = np.sqrt(np.mean(np.abs(r_k) ** 2) / (2 * snr_lin))
+            r_k += noise_std * (np.random.randn(len(r_k)) + 1j * np.random.randn(len(r_k)))
         return r_k
 
-        # if self._awgn:
-        #     rx = self.add_awgn(rx, snr_db)
-        # return rx
-
-    def add_awgn(self, x, reqSNR, sigPower="measured", powerType="db", seed=None
-    ):
-        """
-        Internal method to add white Gaussian noise to the signal.
-        """
-        # Handle signal power
+    def add_awgn(self, x, reqSNR, sigPower="measured", powerType="db", seed=None):
         if sigPower == "measured":
             sigPower = np.mean(np.abs(x) ** 2)
         elif sigPower == "default":
-            sigPower = 1.0  # 0 dBW
+            sigPower = 1.0
         else:
             sigPower = float(sigPower)
 
-        # Convert SNR to linear scale if needed
         if powerType.lower() == "db":
             reqSNR = 10 ** (np.array(reqSNR) / 10)
-            if isinstance(sigPower, str) and sigPower not in (
-                "measured",
-                "default",
-            ):
+            if isinstance(sigPower, str) and sigPower not in ("measured", "default"):
                 sigPower = 10 ** (float(sigPower) / 10)
         elif powerType.lower() != "linear":
             raise ValueError("powerType must be 'db' or 'linear'")
 
-        # Validate SNR
         if np.any(np.array(reqSNR) < 0):
             raise ValueError("SNR must be non-negative")
 
-        # Ensure both are numeric
         sigPower = float(sigPower)
         reqSNR = np.array(reqSNR, dtype=float)
-
-        # Compute noise power
         noisePower = sigPower / reqSNR
 
-        # Generate noise
         if seed is not None:
             rng = np.random.RandomState(seed)
             noise = (
@@ -201,39 +152,217 @@ class Channel:
                 else np.random.randn(*x.shape)
             )
 
-        # Scale noise
         noise = np.sqrt(noisePower) * noise
-
-        # Add noise to signal
         y = x + noise
-
-        # Compute noise variance
         var = noisePower
         return y, var
+
+
+# ======================= LinearEqualizer
+class LinearEqualizer:
+    def __init__(self,
+                 Algorithm='LMS',
+                 NumTaps=5,
+                 StepSize=0.01,
+                 Constellation=None,
+                 ReferenceTap=1,
+                 InputDelay=0,
+                 InputSamplesPerSymbol=1,
+                 TrainingFlagInputPort=False,
+                 AdaptAfterTraining=False,
+                 AdaptWeightsSource='Property',
+                 AdaptWeights=True,
+                 InitialWeightsSource='Property',
+                 InitialWeights=None,
+                 BlindInitialWeights=None,
+                 WeightUpdatePeriod=1):
+
+        self.Algorithm = Algorithm
+        self.NumTaps = NumTaps
+        self.StepSize = StepSize
+        self.Constellation = Constellation
+        self.ReferenceTap = ReferenceTap
+        self.InputDelay = InputDelay
+        self.InputSamplesPerSymbol = InputSamplesPerSymbol
+        self.TrainingFlagInputPort = TrainingFlagInputPort
+        self.AdaptAfterTraining = AdaptAfterTraining
+        self.AdaptWeightsSource = AdaptWeightsSource
+        self.AdaptWeights = AdaptWeights
+        self.InitialWeightsSource = InitialWeightsSource
+        self.WeightUpdatePeriod = WeightUpdatePeriod
+
+        if BlindInitialWeights is None:
+            self.BlindInitialWeights = np.zeros(NumTaps, dtype=complex)
+        else:
+            self.BlindInitialWeights = np.asarray(BlindInitialWeights, dtype=complex)
+
+        if InitialWeights is not None:
+            self.weights = np.asarray(InitialWeights, dtype=complex)
+        else:
+            self.weights = self.BlindInitialWeights.copy()
+
+        self.input_buffer = np.zeros(NumTaps, dtype=complex)
+        self.symbol_counter = 0
+        self.training_complete = False
+        self._prev_training_flag = False
+
+    @property
+    def LocalNumForwardTaps(self):
+        return self.NumTaps
+
+    @property
+    def LocalNumFeedbackTaps(self):
+        return 0
+
+    def reset(self):
+        self.weights = self.BlindInitialWeights.copy()
+        self.input_buffer = np.zeros(self.NumTaps, dtype=complex)
+        self.symbol_counter = 0
+        self.training_complete = False
+        self._prev_training_flag = False
+
+    def mmseweights(self, h, SNR):
+        h = np.asarray(h, dtype=complex).flatten()
+        num_taps = self.LocalNumForwardTaps
+        h_len = len(h)
+
+        delay = self.InputDelay
+        total_delay = self.ReferenceTap + delay
+
+        h_auto_corr = np.correlate(h, h, mode='full')
+        r = np.concatenate([h_auto_corr[h_len-1:], np.zeros(num_taps - h_len, dtype=complex)])
+        R = toeplitz(r[:num_taps], np.conj(r[:num_taps]))
+
+        R += 0.5 * 10 ** (-SNR / 10) * np.eye(num_taps)
+        p = np.zeros(num_taps, dtype=complex)
+
+        if total_delay < h_len:
+            p[:total_delay] = np.conj(h[:total_delay][::-1])
+        else:
+            p[total_delay - h_len:total_delay] = np.conj(h[::-1])
+
+        w0 = np.linalg.solve(R, p)
+        return np.conj(w0)
+
+    def step(self, x, *args):
+        x = np.asarray(x, dtype=complex).flatten()
+
+        training_symbols = None
+        training_flag = True
+        adapt_weights = self.AdaptWeights
+
+        if len(args) >= 1:
+            training_symbols = np.asarray(args[0], dtype=complex).flatten()
+        if self.TrainingFlagInputPort and len(args) == 2:
+            training_flag = bool(args[1])
+        elif not self.TrainingFlagInputPort and len(args) == 2:
+            adapt_weights = bool(args[1])
+
+        y = np.zeros(len(x), dtype=complex)
+        e = np.zeros(len(x), dtype=complex)
+
+        for i in range(len(x)):
+            # Shift buffer: newest sample first
+            self.input_buffer = np.roll(self.input_buffer, 1)
+            self.input_buffer[0] = x[i]
+
+            y[i] = np.dot(np.conj(self.weights), self.input_buffer)
+
+            if adapt_weights and (self.symbol_counter % self.WeightUpdatePeriod == 0):
+                if training_symbols is not None and i < len(training_symbols) and training_flag:
+                    d = training_symbols[i]
+                elif self.AdaptAfterTraining and self.Constellation is not None:
+                    d = self.Constellation[np.argmin(np.abs(y[i] - self.Constellation))]
+                else:
+                    d = None
+
+                if d is not None:
+                    e[i] = d - y[i]
+                    norm_factor = np.dot(self.input_buffer, np.conj(self.input_buffer)) + 1e-12
+                    self.weights += (self.StepSize / norm_factor) * np.conj(e[i]) * self.input_buffer
+
+            self.symbol_counter += 1
+
+        if training_symbols is not None:
+            self.training_complete = True
+
+        return y, e, self.weights.copy()
+
+    def isLocked(self):
+        return self.training_complete
+
+    def clone(self):
+        return LinearEqualizer(
+            Algorithm=self.Algorithm,
+            NumTaps=self.NumTaps,
+            StepSize=self.StepSize,
+            Constellation=self.Constellation,
+            ReferenceTap=self.ReferenceTap,
+            InputDelay=self.InputDelay,
+            InputSamplesPerSymbol=self.InputSamplesPerSymbol,
+            TrainingFlagInputPort=self.TrainingFlagInputPort,
+            AdaptAfterTraining=self.AdaptAfterTraining,
+            AdaptWeightsSource=self.AdaptWeightsSource,
+            AdaptWeights=self.AdaptWeights,
+            InitialWeightsSource=self.InitialWeightsSource,
+            InitialWeights=self.weights.copy(),
+            BlindInitialWeights=self.BlindInitialWeights.copy(),
+            WeightUpdatePeriod=self.WeightUpdatePeriod,
+        )
 
 
 # ======================= SysOrch
 class SysOrch:
     def __init__(self):
-        # Instantiate DSP objects here
         self.tx_dsp = TxDSP()
         self.channel = Channel().configure(choice=1, nl=0, awgn=True)
 
     def run(self):
         print("Running SysOrch")
         M = 16
-        d = np.random.randint(0, M, size=1000)  # random integers between 0 and M-1
+        d = np.random.randint(0, M, size=1000)
 
-        # 16-QAM modulation with Gray ordering, treating input as integers
         x, const = self.tx_dsp.modulate(d, M, "gray", bitInput=False)
 
         print("Modulated output (first 10):", x[:10])
         print("Constellation points:", const)
 
-    
-        # Apply channel and AWGN
-        r_k = self.channel.apply_channel(x, snr_db=10)
+        r_k = self.channel.apply_channel(x, snr_db=40)
         print("Received signal (first 10):", r_k[:10])
+
+        eq = LinearEqualizer(NumTaps=7, StepSize=0.01, Constellation=const, ReferenceTap=3)
+
+        y, e, _ = eq.step(r_k, x[:100])
+
+        plt.figure(figsize=(12, 5))
+        plt.subplot(1, 2, 1)
+        plt.plot(np.abs(e))
+        plt.xlabel('Symbols')
+        plt.ylabel('|e|')
+        plt.title('Error Magnitude During Training')
+        plt.grid(True)
+
+        plt.subplot(1, 2, 2)
+        plt.scatter(np.real(y), np.imag(y))
+        plt.title('Equalized Signal Constellation')
+        plt.xlabel('In-phase')
+        plt.ylabel('Quadrature')
+        plt.grid(True)
+        plt.axis('equal')
+        plt.tight_layout()
+        plt.show()
+
+        y_rest, _, _ = eq.step(r_k[100:])
+        print("Equalizer locked:", eq.isLocked())
+
+        plt.figure()
+        plt.scatter(np.real(np.concatenate([y, y_rest])), np.imag(np.concatenate([y, y_rest])))
+        plt.title('Final Equalized Signal Constellation')
+        plt.xlabel('In-phase')
+        plt.ylabel('Quadrature')
+        plt.grid(True)
+        plt.axis('equal')
+        plt.show()
 
 
 if __name__ == "__main__":
